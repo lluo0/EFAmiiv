@@ -76,6 +76,49 @@ r2_order <- function(object){
 
 
 #########scaling indicator selection########
+#scaling indicator selection criterion
+
+#1, order: uses the first appearing variable as the scaling indicator
+
+#2, sargan: uses the variable with the least number of significant sargans as the scaling indicator.
+#if multiple variables have the same least number of significant sargans, chooses the first appearing variable.
+
+#3, R2: uses the variable with the highest R2 as the scaling indicator.
+#if multiple variables have the same R2 value, chooses the first appearing variable.
+
+#4, factor loading: uses the variable with the most number of significant factor loadings as the scaling indicator.
+#if multiple variables have the same most number of significant factor loadings, chooses the first appearing variable.
+
+#5, sargan_R2: uses the variable with the least number of significant sargans as the scaling indicator.
+#if multiple variables have the same least number of significant sargans, chooses the one with higher R2.
+#if still multiple options, chooses the first appearing variable.
+
+#6, sargan_factorloading: uses the variable with the least number of significant sargans as the scaling indicator.
+#if multiple variables have the same least number of significant sargans, chooses the one with more significant factor loadings.
+#if still multiple options, chooses the first appearing variable.
+
+#7, sargan_factorloading_R2: uses the variable with the least number of significant sargans as the scaling indicator.
+#if multiple variables have the same least number of significant sargans, chooses the one with more significant factor loadings.
+#if still multiple options, chooses the one with higher R2.
+
+#8, factorloading_R2: uses the variable with the most number of significant factor loadings as the scaling indicator.
+#if multiple variables have the same nist number of significant factor loadings, chooses the one with higher R2.
+#if still multiple options, chooses the first appearing variable.
+
+#9, factorloading_sargan: uses the variable with the most number of significant factor loadings as the scaling indicator.
+#if multiple variables have the same nist number of significant factor loadings, chooses the one with less significant sargans.
+#if still multiple options, chooses the first appearing variable.
+
+#10, factorloading_sargan_R2: uses the variable with the most number of significant factor loadings as the scaling indicator.
+#if multiple variables have the same nist number of significant factor loadings, chooses the one with less significant sargans.
+#if still multiple options, chooses the one with higher R2.
+
+#11, sargan+factorloading: uses the variable with the least sum of significant sargans and non-signficant factor loadings.
+#if multiple variables have the same least sum of significnat sargans and non-significant factor loadings, chooses the first appearing variable.
+
+#12, sargan+factorloading_R2: uses the variable with the least sum of significant sargans and non-signficant factor loadings.
+#if multiple variables have the same least sum of significnat sargans and non-significant factor loadings, chooses the one with higher R2.
+
 select_scalingind <- function(data, sigLevel = .05,
                               scalingCrit = "sargan+factorloading_R2"){
 
