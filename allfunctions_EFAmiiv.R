@@ -11,6 +11,8 @@ getbadvar <- function(fit, sigLevel=.05){
 
   v_list2 <- vector()
   table <- na.omit(estimatesTable(fit))
+  #this resolves the different order of rows by estimatesTable between windows and mac
+  table <- table[table$op=='=~',] #added 4.13.2022
   for (p in 1:length(fit$eqn))
     if (table[p,7] > sigLevel){
       v_list2 <- append(v_list2, table[p,3])
@@ -571,7 +573,18 @@ stepN_EFAmiiv <- function(stepPrev, data, sigLevel, scalingCrit){
     crossloadmodel <- c(crossloadmodel, correlatedErrors)
   }
 
-  crossloadfit <- miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = T)
+ # crossloadfit <- miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = T)
+
+  #added 3.26.22 for when underidentified model happens
+  crossloadfit <- tryCatch( miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = T),
+           error = function(e)
+             return(0)) #0 for error
+  if(crossloadfit==0){
+    crossloadfit <- miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = F) #??but why is this omitting so many loadings?
+  }
+
+
+
   ##then see if any variables actually crossload
   ##update the bad variable list
   newbadvar <- getbadvar_crossload(crossloadfit, sigLevel, stepPrev$num_factor, stepPrev$badvar)

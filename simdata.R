@@ -1,4 +1,5 @@
 library(lavaan)
+library(psych)
 ##############simulate more data and try on algorithm 3############
 #m1: one factor with x4 ~~ x5
 sm1 <- 'f1 =~ 1*x1 + .8*x2 + .7*x3 + .7*x4 + .65*x5 + .6*x6 + .6*x7 + .55*x8
