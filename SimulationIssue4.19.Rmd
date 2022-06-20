@@ -1,0 +1,162 @@
+---
+title: "SimulationIssue"
+author: "Lan Luo"
+date: '2022-04-19'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(width = 90)
+library(MASS)
+library(mvtnorm)
+library(lavaan)
+library(MIIVsem)
+library(ggplot2)
+library(corrplot)
+```
+
+## Data Simulation
+
+Here I try to simulate a 2 factor model with 8 variables. No crossloadings here.
+
+Model specification as below: both latent factors with mean of 0 and varaicne of 1 and a covariance of .3. Factor loadings are 1, .8, .7, .7 for x1-x4 on f1 and x5-x8 on f2. Error terms have mean of 0 and variance of .01, no correlated errors here. Observed variables are standardized.
+```{r sim1}
+N <- 1000
+mu_latent <- c(0,0) #latent factor means #k=#of latent factors
+varcov_latent <- matrix(c(1, .3, #var-cov matrix for latent factors
+                .3, 1), nrow = 2, byrow = T)
+Lambda <- matrix(c(1, .8, .7, .7, 0, 0, 0, 0, #loadings
+                   0, 0, 0, 0, 1, .8, .7, .7), nrow = 8, byrow = F) #p*k matrix.p=#of observed variables.
+Lambda
+mu_epsilon <- rep(0, 8)
+varcov_epsilon <- diag(c(1-1^2, #standardized
+                         1-.8^2,
+                         1-.7^2,
+                         1-.7^2,
+                         1-1^2,
+                         1-.8^2,
+                         1-.7^2,
+                         1-.7^2),
+                       nrow = 8)
+varcov_epsilon
+```
+
+Note that x7 and x8 are off from the true DGM specification, and x8 is perfectly correlated with x1.
+```{r sim1b, error = T}
+#generate latent factors
+set.seed(1234)
+zeta <- mvrnorm(n = N,
+               mu = mu_latent,
+               Sigma = varcov_latent) #n*p matrix
+#generate residuals
+set.seed(1234)
+epsilon <- mvrnorm(n = N,
+               mu =mu_epsilon,
+               Sigma = varcov_epsilon) #p*n matrix
+
+#### Generate the observed variable series ####
+y <- matrix(0, nrow = N, ncol = 8)
+for (p in 1:nrow(y)){
+  y[p, ] <- Lambda %*% zeta[p, ] + epsilon[p, ]
+}
+head(y)
+#identical to the following using matrix computation
+gendata <- t(Lambda%*%t(zeta) + t(epsilon)) #transpose of p*n matrix
+head(gendata)
+
+cov(gendata)
+corrplot::corrplot(cor(gendata), method = 'number')
+
+gendata <- cbind(gendata, 1:N)
+colnames(gendata) <- c(paste0('x', c(1:8)), 'Time')
+gendata_reshape <- reshape2::melt(as.data.frame(gendata), id = "Time")
+
+ggplot(gendata_reshape, aes(Time, value)) + geom_line() +
+  theme_bw() + ylab("") +
+  facet_wrap(~ variable, ncol = 3) +
+  theme(strip.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+summary(cfa(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+            data = gendata))
+summary(miive(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+              data = gendata,
+              var.cov = T))
+```
+
+However, this is solved by adding (at least) 2 additional observed variables. AKA, I added 2 extra variables x9 and x10 with very small loading on both factors when simulating which won't be used for the final simulated data but merely for the sake of keeping x8 follow the model specification. See the code and results below: everything else stays the same besides we added 2 extra variables here.
+
+```{r sim2}
+N <- 1000
+mu_latent <- c(0,0) #latent factor means #k=#of latent factors
+varcov_latent <- matrix(c(1, .3, #var-cov matrix for latent factors
+                .3, 1), nrow = 2, byrow = T)
+Lambda <- matrix(c(1, .8, .7, .7, 0, 0, 0, 0, .05, .05, #loadings
+                   0, 0, 0, 0, 1, .8, .7, .7, .05, .05), nrow = 10, byrow = F) #p*k matrix.p=#of observed variables.
+Lambda
+mu_epsilon <- rep(0, 10)
+varcov_epsilon <- diag(c(1-1^2, #standardized
+                         1-.8^2,
+                         1-.7^2,
+                         1-.7^2,
+                         1-1^2,
+                         1-.8^2,
+                         1-.7^2,
+                         1-.7^2,
+                         1-.05^2-.05^2,
+                         1-.05^2-.05^2),
+                       nrow = 10)
+varcov_epsilon
+```
+
+Now x7 and x8 follow the model specification and x9 and x10 behave similarly what x7 and x8 behave in the previous example when x9 and x10 are not simulated. Note that the variance of x4 is a bit small - is this normal? 
+
+Additionally, the variance of x1 and x5 estimated using ML and MIIV-2SLS are almost 0. Is this because after taking into account the variances of f1 and f2?
+```{r sim2b}
+#generate latent factors
+set.seed(1234)
+zeta <- mvrnorm(n = N,
+               mu = mu_latent,
+               Sigma = varcov_latent) #n*p matrix
+#generate residuals
+set.seed(1234)
+epsilon <- mvrnorm(n = N,
+               mu =mu_epsilon,
+               Sigma = varcov_epsilon) #p*n matrix
+
+#### Generate the observed variable series ####
+y <- matrix(0, nrow = N, ncol = 10)
+for (p in 1:nrow(y)){
+  y[p, ] <- Lambda %*% zeta[p, ] + epsilon[p, ]
+}
+head(y)
+#identical to the following using matrix computation
+gendata <- t(Lambda%*%t(zeta) + t(epsilon)) #transpose of p*n matrix
+head(gendata)
+
+cov(gendata)
+corrplot::corrplot(cor(gendata), method = 'number')
+
+gendata <- cbind(gendata, 1:N)
+colnames(gendata) <- c(paste0('x', c(1:10)), 'Time')
+gendata_reshape <- reshape2::melt(as.data.frame(gendata), id = "Time")
+
+ggplot(gendata_reshape, aes(Time, value)) + geom_line() +
+  theme_bw() + ylab("") +
+  facet_wrap(~ variable, ncol = 3) +
+  theme(strip.background = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+summary(cfa(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+            data = gendata))
+summary(miive(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+              data = gendata,
+              var.cov = T))
+```

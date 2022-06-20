@@ -1,0 +1,158 @@
+---
+title: "FAsimUpdate"
+author: "Lan Luo"
+date: '2022-05-13'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(lavaan)
+library(MASS)
+library(MIIVsem)
+library(mvtnorm)
+options(width = 90)
+```
+
+
+## Recap
+
+The previous simulation (simple 2 factor simulation) did not seem to follow the true DGM. Here I simulate a one factor model to double check where is going wrong.
+
+After hand computing the covariances for observed variables and their error terms, and trying other packages to simulate multivariate normal distribution data, it appears that the simulation not following specified model structure is due to some issues with one particular function when generating the data. Below I demonstrate how that's the case and how it can be solved - we could either switch to another random number generating function, or generate the observed data directly from the observed variables' covariance matrix. 
+
+## One factor simulation
+
+A very simple one factor model. The value of the error covariance matrix is determined by setting all R2 values to .8. Following the equations 1, V(X) = lambda^2 * V(Latent) + V(error), and 2, R2 (.8 here) = lambda^2 *V(latent) / V(X).
+
+Here the function used to generate multivariate normal distribution is 'mvrnorm' from the MASS package. 
+
+We can see that the covariance of the generated data does NOT follow what it is supposed to be like.
+```{r mass}
+N <- 500
+mean_latent <- 0
+varcov_latent <- 1
+loading <- matrix(c(1,
+                    .8,
+                    .7,
+                    .6), nrow = 4, byrow = T)
+varcov_epsilon <- diag(c(.25, .16, .1225, .09), nrow = 4)
+seed <- 0
+#data generation
+set.seed(1234+seed)
+zeta <- MASS::mvrnorm(n = N,
+                mu = mean_latent,
+                Sigma = varcov_latent) #generate latent factors
+
+set.seed(1234+seed)
+epsilon <-  MASS::mvrnorm(n = N,
+                   mu = rep(0, 4),
+                   Sigma = varcov_epsilon) #n*p matrix, generate error terms
+#compute observed variables
+gendata <- t(loading %*% t(zeta)) + epsilon
+colnames(gendata) <- paste0('x', c(1:4))
+cov(gendata)
+#the covariance matrix of the observed data should be: Lambda*phi*t(Lambda) + theta
+loading%*%varcov_latent%*%t(loading) + varcov_epsilon
+
+heatmap(cor(gendata))
+
+cov(zeta)
+cov(epsilon)
+
+```
+
+Consequently, we observe the model fit to be off - look at the R2 values and negative variance value for x1.  
+```{r mass2}
+summary(cfa('f1=~x1+x2+x3+x4', data = gendata), rsquare = T)
+summary(miive('f1=~x1+x2+x3+x4', data = gendata, var.cov = T))
+```
+
+I then generated data based directly on the covariance matrix for the observed data.
+
+Here you can see that the covariance matrix of y actually (finally!) follows the true DGM.
+```{r obs}
+loading%*%varcov_latent%*%t(loading) + varcov_epsilon
+
+#generate data based on the covariance matrix of observed data
+y <- mvrnorm(n = N,
+             mu = rep(0, 4),
+             Sigma = (loading%*%varcov_latent%*%t(loading) + varcov_epsilon))
+cov(y)
+colnames(y) <- paste0('x', c(1:4))
+summary(cfa('f1=~x1+x2+x3+x4', data = y), rsquare = T)
+summary(miive('f1=~x1+x2+x3+x4', data = y, var.cov = T))
+```
+
+I then tried another random number generating function, 'rmvnorm' from the mvtnorm package (looks very likely to  the previous 'mvrnorm' function).
+
+Again, the covariance matrix of simulated data looks good.
+```{r mvtnorm}
+#data generation
+set.seed(1234+seed)
+zeta <- rnorm(n = N, mean = 0, sd = sqrt(varcov_latent))
+
+set.seed(1234+seed)
+epsilon <- mvtnorm::rmvnorm(n = N,
+                   mean = rep(0, 4),
+                   sigma = varcov_epsilon) #n*p matrix, generate error terms
+#compute observed variables
+gendata <- t(loading %*% t(zeta)) + epsilon
+colnames(gendata) <- paste0('x', c(1:4))
+cov(gendata)
+```
+And so does the model fits. The R2 values and variances also follow the true DGM.
+```{r mvtnorm2}
+summary(cfa('f1=~x1+x2+x3+x4', data = gendata), rsquare = T)
+summary(miive('f1=~x1+x2+x3+x4', data = gendata, var.cov = T))
+```
+
+## Redo of the previous 2 factor model
+
+Here I redid the previous 2 factor model using the rmvnorm function instead, and we can see that the new simulated data now did follow the true DGM specification, and the R2 values are correct based on our specification.
+```{r 2}
+#####2#####
+N <- 500
+mean_latent <- c(0,0)
+varcov_latent <- matrix(c(1,.5,
+                          .5, 1), nrow = 2)
+loading <- matrix(c(1,0,
+                    .8,0,
+                    .7,0,
+                    .6,0,
+                    0,1,
+                    0,.85,
+                    0,.75,
+                    0,.65), nrow = 8, byrow = T)
+varcov_epsilon <- diag(.25, nrow = 8)
+
+set.seed(1234+seed)
+zeta <- mvtnorm::rmvnorm(n = N, mean = mean_latent, sigma = varcov_latent)
+cov(zeta)
+set.seed(1234+seed)
+epsilon <- mvtnorm::rmvnorm(n = N,
+                            mean = rep(0, 8),
+                            sigma = varcov_epsilon) #n*p matrix, generate error terms
+cov(epsilon)
+#compute observed variables
+gendata <- t(loading %*% t(zeta)) + epsilon
+
+cov(gendata)
+loading%*%varcov_latent%*%t(loading) + varcov_epsilon
+
+colnames(gendata) <- paste0('x', c(1:8))
+
+summary(miive(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+              data = gendata,
+              var.cov = T))
+summary(cfa(model = 'f1=~x1+x2+x3+x4
+            f2=~x5+x6+x7+x8',
+            data = gendata), rsquare = T)
+
+```
+
+## Summary
+
+The problem seems to be with the MASS package's mvrnorm function. However, I was not able to pinpoint where/how exactly it's causing the issue. Because the the covariance matrices for latent factor and error terms generated DIRECTLY using the function DID follow the specification, it was only when I used these two data matrices (zeta and epsilon) to compute the observed variables that the issue occurred. Similarly, when I simulated the observed variables directly using the mvrnorm function, it also followed the specified structure. The problem was not with the equation used to compute observed variables because 1, it is the correct theoretical equation, and 2, when I switched to rmvnorm from the mvtnorm package for computation, the observed variables still followed the true DGM structure. 

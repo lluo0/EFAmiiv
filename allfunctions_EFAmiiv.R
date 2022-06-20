@@ -122,7 +122,8 @@ r2_order <- function(object){
 #if multiple variables have the same least sum of significnat sargans and non-significant factor loadings, chooses the one with higher R2.
 
 select_scalingind <- function(data, sigLevel = .05,
-                              scalingCrit = "sargan+factorloading_R2"){
+                              scalingCrit = "sargan+factorloading_R2",
+                              correlatedErrors = NULL){
 
   scalingindicator <- character()
 
@@ -143,7 +144,13 @@ select_scalingind <- function(data, sigLevel = .05,
     model <- list()
     fit <- list()
     for(p in 1:ncol(data)){
-      model[[p]] <- paste0('f1=~', paste0(colnames(data)[p]), '+', paste0(colnames(data)[-p], collapse = '+'))
+      if(is.null(correlatedErrors)){
+        model[[p]] <- paste0('f1=~', paste0(colnames(data)[p]), '+', paste0(colnames(data)[-p], collapse = '+'))
+      }
+      if(!is.null(correlatedErrors)){
+        model[[p]] <- paste0(paste0('f1=~', paste0(colnames(data)[p]), '+', paste0(colnames(data)[-p], collapse = '+')),
+                             '\n',correlatedErrors)
+      }
       fit[[p]] <- miive(model[[p]], data, var.cov = T)
       names(model)[p] <- names(fit)[p] <- colnames(data)[p] #name the lists using the variable used as the scaling indicator
     }
@@ -289,6 +296,7 @@ select_scalingind_stepN <- function(data, sigLevel = .05,
   goodmodelpart <- stepPrev$goodmodelpart
   badvar <- stepPrev$badvar
   num_factor <- stepPrev$num_factor
+  correlatedErrors <- stepPrev$correlatedErrors
   #if scaling indicator selection is order, just use the first variable as the scaling indicator.
   if(scalingCrit == 'order'){
     scalingindicator <- badvar[1]
@@ -307,10 +315,19 @@ select_scalingind_stepN <- function(data, sigLevel = .05,
     #   names(model)[p] <- names(fit)[p] <- colnames(data)[p] #name the lists using the variable used as the scaling indicator
     # }
     for(p in 1:length(badvar)){
-      model[[p]] <- paste(paste0(goodmodelpart, collapse = '\n'),
-                          paste(paste0("f",num_factor+1), "=~",paste0(badvar[p]), '+',
-                                paste0(badvar[-p], collapse = "+"), sep = ""),
-                          sep = "\n")
+      if(is.null(correlatedErrors)){
+        model[[p]] <- paste(paste0(goodmodelpart, collapse = '\n'),
+                            paste(paste0("f",num_factor+1), "=~",paste0(badvar[p]), '+',
+                                  paste0(badvar[-p], collapse = "+"), sep = ""),
+                            sep = "\n")
+      }
+      if(!is.null(correlatedErrors)){
+        model[[p]] <- paste0(paste(paste0(goodmodelpart, collapse = '\n'),
+                            paste(paste0("f",num_factor+1), "=~",paste0(badvar[p]), '+',
+                                  paste0(badvar[-p], collapse = "+"), sep = ""),
+                            sep = "\n"), '\n', correlatedErrors)
+      }
+
       fit[[p]] <- miive(model[[p]], data, var.cov = T)
       names(model)[p] <- names(fit)[p] <- badvar[p]
     }
@@ -579,7 +596,7 @@ stepN_EFAmiiv <- function(stepPrev, data, sigLevel, scalingCrit){
   crossloadfit <- tryCatch( miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = T),
            error = function(e)
              return(0)) #0 for error
-  if(crossloadfit==0){
+  if(class(crossloadfit)!='miive'){
     crossloadfit <- miive(paste0(crossloadmodel, collapse = '\n'), data, var.cov = F) #??but why is this omitting so many loadings?
   }
 

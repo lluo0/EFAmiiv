@@ -5,10 +5,6 @@ EFAmiiv_multi_s1 <- function(model = NULL,
                           sigLevel = .05,
                           scalingCrit = "sargan+factorloading_R2",
                           correlatedErrors = NULL){
-  fit_initial <- miive(model = paste0(model, '\n', correlatedErrors), data = data, var.cov = T)
-
-  ##get bad variables
-  badvar <- getbadvar(fit_initial)
 
   ##get the initial model with variables on each factor saved separately
   modelparts <- strsplit(model, split = '\n', fixed = T)[[1]]
@@ -18,6 +14,16 @@ EFAmiiv_multi_s1 <- function(model = NULL,
     model_sep[[n]] <- strsplit(strsplit(modelparts, split = '=~', fixed = T)[[n]][2], split = '+', fixed = T)[[1]]
   }
   model_sep <- lapply(model_sep, function(x) gsub(" ", "",x))
+
+  if(!is.null(correlatedErrors)){
+    model <- paste0(model, '\n', correlatedErrors)
+  }
+  fit_initial <- miive(model = model, data = data, var.cov = T)
+
+  # ##get bad variables
+  # badvar <- getbadvar(fit_initial)
+
+
   ##get bad variables
   badvar <- getbadvar(fit_initial, sigLevel = sigLevel)
 
@@ -54,6 +60,22 @@ EFAmiiv_multi_s1 <- function(model = NULL,
   if(length(anyleftout) == 1){
     crossloadmodel_clean[[num_factor]] <- paste0(crossloadmodel_clean[[num_factor]], '+', anyleftout)
   }
+  if(length(anyleftout) == 0){
+    crossloadmodel_clean <- crossloadmodel_clean
+  }
+  if(length(anyleftout)>1){
+    #setup stepPrev object to select scaling indiactor for this new factor
+    stepPrev <- list()
+    stepPrev$goodmodelpart <- crossloadmodel_clean
+    stepPrev$badvar <- anyleftout
+    stepPrev$num_factor <- num_factor
+    stepPrev$correlatedErrors <- correlatedErrors
+    scalingind <- select_scalingind_stepN(data, sigLevel, scalingCrit,
+                                          stepPrev = stepPrev)
+    crossloadmodel_clean[[num_factor+1]] <- paste0('f', num_factor+1, '=~',
+                                                   scalingind, '+',
+                                                   paste0(anyleftout[-which(anyleftout==scalingind)], collapse = '+'))
+  }
 
   ##new fit
   newcrossloadfit <- miive(model = paste0(paste0(crossloadmodel_clean, collapse = '\n'), '\n', correlatedErrors), data, var.cov = T)
@@ -68,15 +90,17 @@ EFAmiiv_multi_s1 <- function(model = NULL,
     nextstep <- 'yes'
   }
 
-  if(!is.null(correlatedErrors)){
-    finalmodel <- paste0(paste0(crossloadmodel_clean, collapse = '\n'), '\n', correlatedErrors)
-  }else{finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')}
+  # if(!is.null(correlatedErrors)){
+  #   finalmodel <- paste0(paste0(crossloadmodel_clean, collapse = '\n'), '\n', correlatedErrors)
+  # }else{finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')}
 
   ##create the final obj to return
-  finalobj <- list(model = finalmodel,
+  finalobj <- list(#model = finalmodel,
+                   model = paste0(crossloadmodel_clean, collapse ='\n'),
                    fit = newcrossloadfit,
                    num_factor = num_factor,
-                   badvar = c(newbadvar, anyleftout), #need to combine the badvars and left out variables
+                   # badvar = c(newbadvar, anyleftout), #need to combine the badvars and left out variables
+                   badvar = newbadvar,
                    nextstep = nextstep,
                    correlatedErrors = correlatedErrors,
                    model_sep = crossloadmodel_sepclean,
@@ -89,22 +113,34 @@ EFAmiiv_multi_s2 <- function(stepPrev,
                              sigLevel =  .05,
                              scalingCrit = "sargan+factorloading_R2"){
 
-  ##create a new factor for bad variables
-  scalingindicator <- select_scalingind_stepN(data, scalingCrit = scalingCrit, stepPrev = stepPrev)
+  # ##create a new factor for bad variables
+  # scalingindicator <- select_scalingind_stepN(data, scalingCrit = scalingCrit, stepPrev = stepPrev)
+  # correlatedErrors <- stepPrev$correlatedErrors
+  # ##create the new model
+  # num_factor <- stepPrev$num_factor + 1
+  # model_sep <- stepPrev$model_sep
+  # model_sep[[num_factor]] <- c(scalingindicator, setdiff(stepPrev$badvar, scalingindicator))
+  # model <- list()
+  # for(n in 1:num_factor){
+  #   model[[n]] <- paste0('f', n, '=~', paste0(model_sep[[n]], collapse = '+'))
+  # }
+  # ##get fit
+  # fit <- miive(paste0(paste0(model, collapse = '\n'), '\n', correlatedErrors), data, var.cov = T)
+  # ##get bad variables
+  # badvar <- getbadvar(fit, sigLevel = sigLevel)
+  model <- stepPrev$model
+  fit <- stepPrev$fit
+  badvar <- stepPrev$badvar
   correlatedErrors <- stepPrev$correlatedErrors
-  ##create the new model
-  num_factor <- stepPrev$num_factor + 1
-  model_sep <- stepPrev$model_sep
-  model_sep[[num_factor]] <- c(scalingindicator, setdiff(stepPrev$badvar, scalingindicator))
-  model <- list()
-  for(n in 1:num_factor){
-    model[[n]] <- paste0('f', n, '=~', paste0(model_sep[[n]], collapse = '+'))
-  }
-  ##get fit
-  fit <- miive(paste0(paste0(model, collapse = '\n'), '\n', correlatedErrors), data, var.cov = T)
-  ##get bad variables
-  badvar <- getbadvar(fit, sigLevel = sigLevel)
 
+  ##get the initial model with variables on each factor saved separately
+  modelparts <- strsplit(model, split = '\n', fixed = T)[[1]]
+  num_factor <- length(modelparts)
+  model_sep <- list()
+  for(n in 1:num_factor){
+    model_sep[[n]] <- strsplit(strsplit(modelparts, split = '=~', fixed = T)[[n]][2], split = '+', fixed = T)[[1]]
+  }
+  model_sep <- lapply(model_sep, function(x) gsub(" ", "",x))
   ##crossload bad variables
   crossloadmodel_sep <- lapply(model_sep, function(x) unique(c(x, badvar)))
 
@@ -135,9 +171,29 @@ EFAmiiv_multi_s2 <- function(stepPrev,
   ##check if any variables not loaded on any factors!
   anyleftout <- setdiff(colnames(data),unique(unlist(crossloadmodel_sepclean)))
   ##load left out variable on the last factor if only one left out variable, otherwise need to create a new factor
+  # if(length(anyleftout) == 1){
+  #   crossloadmodel_clean[[num_factor]] <- paste0(crossloadmodel_clean[[num_factor]], '+', anyleftout)
+  # }
   if(length(anyleftout) == 1){
     crossloadmodel_clean[[num_factor]] <- paste0(crossloadmodel_clean[[num_factor]], '+', anyleftout)
   }
+  if(length(anyleftout) == 0){
+    crossloadmodel_clean <- crossloadmodel_clean
+  }
+  if(length(anyleftout)>1){
+    #setup stepPrev object to select scaling indiactor for this new factor
+    stepPrev <- list()
+    stepPrev$goodmodelpart <- crossloadmodel_clean
+    stepPrev$badvar <- anyleftout
+    stepPrev$num_factor <- num_factor
+    stepPrev$correlatedErrors <- correlatedErrors
+    scalingind <- select_scalingind_stepN(data, sigLevel, scalingCrit,
+                                          stepPrev = stepPrev)
+    crossloadmodel_clean[[num_factor+1]] <- paste0('f', num_factor+1, '=~',
+                                                   scalingind, '+',
+                                                   paste0(anyleftout[-which(anyleftout==scalingind)], collapse = '+'))
+  }
+
 
   ##new fit
   newcrossloadfit <- miive(model = paste0(paste0(crossloadmodel_clean, collapse = '\n'), '\n', correlatedErrors), data, var.cov = T)
@@ -148,23 +204,45 @@ EFAmiiv_multi_s2 <- function(stepPrev,
 
   ##decide if need next step
   nextstep <- 'no'
-  if(length(newbadvar) > 1 | length(anyleftout) > 1){
+  # if(length(newbadvar) > 1 | length(anyleftout) > 1){
+  #   nextstep <- 'yes'
+  # }
+  if(length(newbadvar) > 1 && !identical(newbadvar,badvar)){
     nextstep <- 'yes'
+    finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')
+    ##create the final obj to return
+    finalobj <- list(model = finalmodel,
+                     fit = newcrossloadfit,
+                     num_factor = num_factor,
+                     badvar = c(newbadvar, anyleftout), #need to combine the badvars and left out variables
+                     nextstep = nextstep,
+                     correlatedErrors = correlatedErrors,
+                     model_sep = crossloadmodel_sepclean,
+                     goodmodelpart = crossloadmodel_clean)
   }
-  ##include correlated errors when applicable for final model print
-  if(!is.null(correlatedErrors)){
-    finalmodel <- paste0(paste0(crossloadmodel_clean, collapse = '\n'),
-                         '\n', correlatedErrors)
-  }else{finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')}
-  ##create the final obj to return
-  finalobj <- list(model = finalmodel,
-                   fit = newcrossloadfit,
-                   num_factor = num_factor,
-                   badvar = c(newbadvar, anyleftout), #need to combine the badvars and left out variables
-                   nextstep = nextstep,
-                   correlatedErrors = correlatedErrors,
-                   model_sep = crossloadmodel_sepclean,
-                   goodmodelpart = crossloadmodel_clean)
+  if(identical(newbadvar,badvar)){ #if new model still has the same bad variables as the previous step
+    #then we go back to the previous step and stop the algorithm
+    finalobj <- stepPrev
+    finalobj$nextstep <- 'no'
+  # }else{
+  #   ##include correlated errors when applicable for final model print
+  #   if(!is.null(correlatedErrors)){
+  #     finalmodel <- paste0(paste0(crossloadmodel_clean, collapse = '\n'),
+  #                          '\n', correlatedErrors)
+  #   }else{finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')}
+    # finalmodel <- paste0(crossloadmodel_clean, collapse = '\n')
+    # ##create the final obj to return
+    # finalobj <- list(model = finalmodel,
+    #                  fit = newcrossloadfit,
+    #                  num_factor = num_factor,
+    #                  badvar = c(newbadvar, anyleftout), #need to combine the badvars and left out variables
+    #                  nextstep = nextstep,
+    #                  correlatedErrors = correlatedErrors,
+    #                  model_sep = crossloadmodel_sepclean,
+    #                  goodmodelpart = crossloadmodel_clean)
+  }
+
+
   return(finalobj)
 
 }
@@ -192,7 +270,14 @@ EFAmiiv_multi <- function(model = NULL,
       finalobj <- s2
     }
   }
+  if(!is.null(finalobj$correlatedErrors)){
+    finalmodel <- paste0(model, '\n', paste0(finalobj$correlatedErrors, collapse = '\n'))
+  }
+  if(is.null(finalobj$correlatedErrors)){
+    finalmodel <- finalobj$model
+  }
 
-  return(finalobj[1:2])
+  return(list(model = finalmodel,
+              fit = finalobj$fit))
 
 }
